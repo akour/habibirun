@@ -75,7 +75,7 @@ def publish(api, package_name, listings):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("app", choices=tuple(APPS))
-    parser.add_argument("action", choices=("validate", "api-check", "publish"))
+    parser.add_argument("action", choices=("validate", "api-check", "export", "publish"))
     args = parser.parse_args()
 
     config = APPS[args.app]
