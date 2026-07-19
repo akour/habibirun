@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APPS = {
     "habibirun": {"package": "com.oneapps.habibirun", "locales": ROOT / "locales"},
     "voidstack": {"package": "com.oneapps.voidstack", "locales": ROOT / "apps" / "voidstack" / "listings.json"},
-    "voiddash": {"package": "com.oneapps.voiddash002", "locales": ROOT / "apps" / "voiddash" / "locales"},
+    "voiddash": {"package": "com.oneapps.voiddash002", "locales": ROOT / "apps" / "voiddash" / "listings.json"},
 }
 
 def load_listings(source):
