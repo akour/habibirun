@@ -5,15 +5,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APPS = {
     "habibirun": {"package": "com.oneapps.habibirun", "locales": ROOT / "locales"},
-    "voidstack": {"package": "com.oneapps.voidstack", "locales": ROOT / "apps" / "voidstack" / "locales"},
+    "voidstack": {"package": "com.oneapps.voidstack", "locales": ROOT / "apps" / "voidstack" / "listings.json"},
     "voiddash": {"package": "com.oneapps.voiddash002", "locales": ROOT / "apps" / "voiddash" / "locales"},
 }
 
-def load_listings(locales_dir):
+def load_listings(source):
     listings = {}
-    for path in sorted(locales_dir.glob("*.json")):
-        data = json.loads(path.read_text(encoding="utf-8"))
-        locale = path.stem
+    if source.is_file():
+        candidates = [
+            (locale, data, source)
+            for locale, data in json.loads(source.read_text(encoding="utf-8")).items()
+        ]
+    else:
+        candidates = [
+            (path.stem, json.loads(path.read_text(encoding="utf-8")), path)
+            for path in sorted(source.glob("*.json"))
+        ]
+    for locale, data, path in candidates:
         required = ("title", "shortDescription", "fullDescription")
         missing = [key for key in required if not data.get(key)]
         if missing:
@@ -24,7 +32,7 @@ def load_listings(locales_dir):
                 raise SystemExit(f"{path}: {key} is {len(data[key])}/{limit} characters")
         listings[locale] = data
     if not listings:
-        raise SystemExit(f"No locale files found in {locales_dir}")
+        raise SystemExit(f"No locale listings found in {source}")
     return listings
 
 def service():
