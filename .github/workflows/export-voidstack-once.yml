@@ -1,4 +1,4 @@
-name: Export Void Stack Listing Once
+name: Export Void Stack Listing Once\n\n# Approved one-time public listing export
 
 on:
   push:
