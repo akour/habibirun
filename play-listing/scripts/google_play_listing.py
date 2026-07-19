@@ -4,18 +4,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APPS = {
-    "habibirun": {
-        "package": "com.oneapps.habibirun",
-        "locales": ROOT / "locales",
-    },
-    "voidstack": {
-        "package": "com.oneapps.voidstack",
-        "locales": ROOT / "apps" / "voidstack" / "locales",
-    },
-    "voiddash": {
-        "package": "com.oneapps.voiddash002",
-        "locales": ROOT / "apps" / "voiddash" / "locales",
-    },
+    "habibirun": {"package": "com.oneapps.habibirun", "locales": ROOT / "locales"},
+    "voidstack": {"package": "com.oneapps.voidstack", "locales": ROOT / "apps" / "voidstack" / "locales"},
+    "voiddash": {"package": "com.oneapps.voiddash002", "locales": ROOT / "apps" / "voiddash" / "locales"},
 }
 
 def load_listings(locales_dir):
@@ -29,9 +20,8 @@ def load_listings(locales_dir):
             raise SystemExit(f"{path}: missing {', '.join(missing)}")
         limits = {"title": 30, "shortDescription": 80, "fullDescription": 4000}
         for key, limit in limits.items():
-            length = len(data[key])
-            if length > limit:
-                raise SystemExit(f"{path}: {key} is {length}/{limit} characters")
+            if len(data[key]) > limit:
+                raise SystemExit(f"{path}: {key} is {len(data[key])}/{limit} characters")
         listings[locale] = data
     if not listings:
         raise SystemExit(f"No locale files found in {locales_dir}")
@@ -43,23 +33,52 @@ def service():
     raw = os.environ.get("PLAY_SERVICE_ACCOUNT_JSON")
     if not raw:
         raise SystemExit("PLAY_SERVICE_ACCOUNT_JSON is not available")
-    info = json.loads(raw)
     credentials = service_account.Credentials.from_service_account_info(
-        info, scopes=["https://www.googleapis.com/auth/androidpublisher"]
+        json.loads(raw), scopes=["https://www.googleapis.com/auth/androidpublisher"]
     )
     return build("androidpublisher", "v3", credentials=credentials, cache_discovery=False)
 
-def api_check(api, package_name):
+def read_listings(api, package_name):
     edit = api.edits().insert(packageName=package_name, body={}).execute()
     edit_id = edit["id"]
     try:
         result = api.edits().listings().list(
             packageName=package_name, editId=edit_id
         ).execute()
-        languages = [item.get("language") for item in result.get("listings", [])]
-        print(f"API access verified for {package_name}. Existing locales: {languages}")
+        return result.get("listings", [])
     finally:
         api.edits().delete(packageName=package_name, editId=edit_id).execute()
+
+def api_check(api, package_name):
+    listings = read_listings(api, package_name)
+    languages = [item.get("language") for item in listings]
+    print(f"API access verified for {package_name}. Existing locales: {languages}")
+
+def export_listings(api, app_name, package_name):
+    listings = read_listings(api, package_name)
+    output_dir = Path("listing-export") / app_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for item in listings:
+        locale = item["language"]
+        data = {
+            "title": item.get("title", ""),
+            "shortDescription": item.get("shortDescription", ""),
+            "fullDescription": item.get("fullDescription", ""),
+            "video": item.get("video", ""),
+        }
+        (output_dir / f"{locale}.json").write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    summary = {
+        "app": app_name,
+        "package": package_name,
+        "locales": sorted(item["language"] for item in listings),
+        "count": len(listings),
+    }
+    (output_dir / "_summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"Exported {len(listings)} existing listings for {package_name}")
 
 def publish(api, package_name, listings):
     edit = api.edits().insert(packageName=package_name, body={}).execute()
@@ -77,12 +96,14 @@ def main():
     parser.add_argument("app", choices=tuple(APPS))
     parser.add_argument("action", choices=("validate", "api-check", "export", "publish"))
     args = parser.parse_args()
-
     config = APPS[args.app]
     package_name = config["package"]
 
     if args.action == "api-check":
         api_check(service(), package_name)
+        return
+    if args.action == "export":
+        export_listings(service(), args.app, package_name)
         return
 
     listings = load_listings(config["locales"])
