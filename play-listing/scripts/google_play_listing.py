@@ -2,12 +2,25 @@
 import argparse, json, os
 from pathlib import Path
 
-PACKAGE_NAME = "com.oneapps.habibirun"
-LOCALES_DIR = Path(__file__).resolve().parents[1] / "locales"
+ROOT = Path(__file__).resolve().parents[1]
+APPS = {
+    "habibirun": {
+        "package": "com.oneapps.habibirun",
+        "locales": ROOT / "locales",
+    },
+    "voidstack": {
+        "package": "com.oneapps.voidstack",
+        "locales": ROOT / "apps" / "voidstack" / "locales",
+    },
+    "voiddash": {
+        "package": "com.oneapps.voiddash002",
+        "locales": ROOT / "apps" / "voiddash" / "locales",
+    },
+}
 
-def load_listings():
+def load_listings(locales_dir):
     listings = {}
-    for path in sorted(LOCALES_DIR.glob("*.json")):
+    for path in sorted(locales_dir.glob("*.json")):
         data = json.loads(path.read_text(encoding="utf-8"))
         locale = path.stem
         required = ("title", "shortDescription", "fullDescription")
@@ -21,7 +34,7 @@ def load_listings():
                 raise SystemExit(f"{path}: {key} is {length}/{limit} characters")
         listings[locale] = data
     if not listings:
-        raise SystemExit("No locale files found")
+        raise SystemExit(f"No locale files found in {locales_dir}")
     return listings
 
 def service():
@@ -36,42 +49,47 @@ def service():
     )
     return build("androidpublisher", "v3", credentials=credentials, cache_discovery=False)
 
-def api_check(api):
-    edit = api.edits().insert(packageName=PACKAGE_NAME, body={}).execute()
+def api_check(api, package_name):
+    edit = api.edits().insert(packageName=package_name, body={}).execute()
     edit_id = edit["id"]
     try:
         result = api.edits().listings().list(
-            packageName=PACKAGE_NAME, editId=edit_id
+            packageName=package_name, editId=edit_id
         ).execute()
         languages = [item.get("language") for item in result.get("listings", [])]
-        print(f"API access verified for {PACKAGE_NAME}. Existing locales: {languages}")
+        print(f"API access verified for {package_name}. Existing locales: {languages}")
     finally:
-        api.edits().delete(packageName=PACKAGE_NAME, editId=edit_id).execute()
+        api.edits().delete(packageName=package_name, editId=edit_id).execute()
 
-def publish(api, listings):
-    edit = api.edits().insert(packageName=PACKAGE_NAME, body={}).execute()
+def publish(api, package_name, listings):
+    edit = api.edits().insert(packageName=package_name, body={}).execute()
     edit_id = edit["id"]
     for locale, body in listings.items():
         api.edits().listings().update(
-            packageName=PACKAGE_NAME, editId=edit_id, language=locale, body=body
+            packageName=package_name, editId=edit_id, language=locale, body=body
         ).execute()
         print(f"Prepared {locale}")
-    api.edits().commit(packageName=PACKAGE_NAME, editId=edit_id).execute()
-    print(f"Committed {len(listings)} localized listings to Google Play")
+    api.edits().commit(packageName=package_name, editId=edit_id).execute()
+    print(f"Committed {len(listings)} localized listings for {package_name}")
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("app", choices=tuple(APPS))
     parser.add_argument("action", choices=("validate", "api-check", "publish"))
     args = parser.parse_args()
-    listings = load_listings()
-    print(f"Validated {len(listings)} locale files")
+
+    config = APPS[args.app]
+    package_name = config["package"]
+
+    if args.action == "api-check":
+        api_check(service(), package_name)
+        return
+
+    listings = load_listings(config["locales"])
+    print(f"Validated {len(listings)} locale files for {package_name}")
     if args.action == "validate":
         return
-    api = service()
-    if args.action == "api-check":
-        api_check(api)
-    else:
-        publish(api, listings)
+    publish(service(), package_name, listings)
 
 if __name__ == "__main__":
     main()
